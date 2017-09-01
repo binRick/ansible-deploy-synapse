@@ -1,0 +1,17 @@
+    - name: deploying yum packages
+      yum: name={{item}} state=present
+      with_items: [libselinux-python,gcc,gcc-c++,autoconf]
+    - name: Creating directory for daemontools source code
+      file: path=/opt/daemontools state=directory
+    - name: Copying Daemontools source tarball
+      copy: src=ansibleFiles/daemontools-0.76.tar.gz dest=/opt/daemontools
+    - name: Untarring Daemontools Source Code
+      command: creates=/opt/daemontools/admin/daemontools-0.76 chdir=/opt/daemontools tar -xf daemontools-0.76.tar.gz
+    - name: Copying Daemontools conf-cc script
+      copy: src=ansibleFiles/conf-cc dest=/opt/daemontools/admin/daemontools-0.76/src/conf-cc
+    - name: Deploying Daemontools Package
+      command: creates=/command chdir=/opt/daemontools/admin/daemontools-0.76 /opt/daemontools/admin/daemontools-0.76/package/install
+    - name: Copying Daemontools systemd service file
+      copy: src=ansibleFiles/daemontools.service dest=/etc/systemd/system/daemontools.service
+    - name: Starting and Enabling Daemontools Service
+      service: name=daemontools enabled=yes state=started

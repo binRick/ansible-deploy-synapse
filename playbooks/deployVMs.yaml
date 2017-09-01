@@ -1,0 +1,59 @@
+---
+- hosts: vzNodes
+  gather_facts: false
+  remote_user: rick
+  become: yes
+  vars:
+  tasks:
+  - name: Enabling Connection Tracking on Hardware Node
+    lineinfile: path=/etc/modprobe.d/openvz.conf state=present regexp='^options nf_conntrack ip_conntrack_disable_ve0=' line='options nf_conntrack ip_conntrack_disable_ve0=0'
+    register: conntrackUpdated
+  - name: Rebooting Node Due to Connection Tracking Enabled
+    when: conntrackUpdated.changed
+    command: reboot
+  - name: Pausing for Node Reboot to complete
+    when: conntrackUpdated.changed
+    pause: minutes=5
+
+- hosts: VMs
+  gather_facts: false
+  remote_user: rick
+  become: yes
+  vars:
+  tasks:
+  - name: Deploying ZFS Privates
+    delegate_to: "{{hostvars[inventory_hostname].onNode}}"
+    zfs: 
+      state: present
+      name: "tank/{{hostvars[inventory_hostname].ctid}}"
+  - name: Deploying VMs
+    delegate_to: "{{hostvars[inventory_hostname].onNode}}"
+    register: VMsChanged
+    openvz:
+      state: started
+      netfilter: full
+      layout: simfs
+      ctid: "{{hostvars[inventory_hostname].ctid}}"
+      private: "/tank/{{hostvars[inventory_hostname].ctid}}/private/{{hostvars[inventory_hostname].ctid}}"
+      root: "/tank/{{hostvars[inventory_hostname].ctid}}/root"
+      ostemplate: "{{hostvars[inventory_hostname].ostemplate}}"
+      ram: "{{hostvars[inventory_hostname].ram}}"
+#      diskspace: "{{hostvars[inventory_hostname].disk}}"
+      swap: "{{hostvars[inventory_hostname].swap}}"
+      hostname: "{{hostvars[inventory_hostname].inventory_hostname}}"
+      ipaddr: "{{hostvars[inventory_hostname].ansible_ssh_host}}"
+      cpus: "{{hostvars[inventory_hostname].cpus}}"
+      cpulimit: "{{hostvars[inventory_hostname].cpus * 100}}"
+  - name: Creating SSH Public Key Directories
+    delegate_to: "{{hostvars[inventory_hostname].onNode}}"
+    file: 
+      state: directory 
+      mode: 0700 
+      path: "/tank/{{hostvars[inventory_hostname].ctid}}/private/{{hostvars[inventory_hostname].ctid}}/root/.ssh"
+  - name: Deploying SSH Public Keys
+    delegate_to: "{{hostvars[inventory_hostname].onNode}}"
+    authorized_key: 
+      user: root 
+      state: present 
+      path: "/tank/{{hostvars[inventory_hostname].ctid}}/private/{{hostvars[inventory_hostname].ctid}}/root/.ssh/authorized_keys"
+      key: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"

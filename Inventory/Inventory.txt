@@ -1,0 +1,29 @@
+[vzNodes]
+ogre		    ansible_ssh_host=66.35.90.140
+
+[vzNodes:vars]
+ansible_ssh_user=rick
+
+[VMs]
+dns1.node.pub       ansible_ssh_host=66.35.70.170 onNode=ogre         ctid=148801
+dns2.node.pub       ansible_ssh_host=66.35.70.171 onNode=ogre         ctid=148802
+chat.node.pub       ansible_ssh_host=66.35.70.172 onNode=ogre         ctid=148803
+
+[VMs:vars]
+ansible_ssh_user=root
+ostemplate=centos-7-x86_64
+cpus=4
+disk=20G
+ram=4G
+swap=1G
+
+[chatServers]
+chat.node.pub
+
+[dnsServers]
+dns1.node.pub
+dns2.node.pub
+
+[all:vars]
+domain=node.pub
+websiteAddress=66.35.70.172

@@ -1,0 +1,115 @@
+---
+- hosts: chatServers
+  gather_facts: true
+  accelerate: False
+  vars:
+  roles: [daemontools]
+  tasks:
+  - name: deploying yum packages
+    yum: name={{item}} state=present
+    with_items: [wget,libselinux-python,gcc,gcc-c++,autoconf,net-tools,epel-release]
+  - name: deploying epel yum packages
+    yum: name={{item}} state=present
+    with_items: [nload,python2-pip]
+  - name: Install the Development tools package group
+    yum: name="@Development tools" state=present
+  - name: Installing Packages required for synapse server
+    with_items: [libtiff-devel,libjpeg-devel,libzip-devel,freetype-devel,lcms2-devel,libwebp-devel,tcl-devel,tk-devel,redhat-rpm-config,python-virtualenv,libffi-devel,openssl-devel,libxslt-devel,libxslt-python,libxslt,python-lxml]
+    yum: name="{{item}}" state=present
+  - name: Installing PIPs
+    pip: name={{item}} state=present
+    with_items: [lxml]
+  - name: Disabling Unneeded services
+    service: name={{item}} state=stopped enabled=False
+    with_items: [httpd,xinetd,saslauthd]
+  - name: Nullifying iptables configuration
+    file: path=/etc/sysconfig/iptables state=absent
+  - name: Disabling iptables
+    service: name=iptables enabled=False state=stopped 
+  - name: Disabling IPTables
+    service: name=iptables state=stopped enabled=False
+  - name: downloading csf
+    command: creates=/usr/src/csf.tgz chdir=/usr/src wget https://download.configserver.com/csf.tgz
+  - name: untarring csf.tgz
+    command:  chdir=/usr/src creates=/usr/src/csf tar zxf csf.tgz
+  - name: deploying csf
+    command: chdir=/usr/src/csf creates=/etc/csf sh install.sh
+  - name: deploying csf config file
+    copy: src=ansibleFiles/csf.conf dest=/etc/csf/csf.conf
+  - command: csf -a {{item}}
+    with_items: [66.35.95.190]
+  - name: Permitting Synapse Service Ports
+    lineinfile: path=/etc/csf/csf.allow state=present line='tcp|in|d={{item}}|d={{ansible_ssh_host}}'
+    with_items: [8008,8448]
+  - name: Configuring Synapse Port Redirects
+    tags: t
+    lineinfile: path=/etc/csf/csf.redirect state=present line='*|{{item.src}}|*|{{item.dst}}|tcp'
+    with_items: 
+      - { src: '80',  dst: '8008' }
+      - { src: '443', dst: '8448' }
+  - name: reloading csf
+    command: csf -r
+
+  - name: Installing Synapse
+    script: ansibleFiles/installSynapse.sh
+    args:
+        creates: /opt/synapse
+  - name: Deploying Synapse Configuration Script
+    template: src=ansibleFiles/configureSynapse.sh.j2 dest=/root/configureSynapse.sh mode=0755
+  - name: Configuring Synapse
+    command: /root/configureSynapse.sh
+    args:
+        creates: /opt/synapse/homeserver.yaml
+  - name: Enabling Registration
+    lineinfile: 
+        path: /opt/synapse/homeserver.yaml
+        state: present
+        regexp: "^enable_registration:" 
+        line: "enable_registration: True"
+  - name: Enabling URL Previews
+    lineinfile: 
+        path: /opt/synapse/homeserver.yaml
+        state: present
+        regexp: "^url_preview_enabled:" 
+        line: "url_preview_enabled: True"
+  - name: Enabling Preview Blacklist
+    lineinfile: 
+        path: /opt/synapse/homeserver.yaml
+        state: present
+        regexp: "^url_preview_ip_range_blacklist:" 
+        line: "url_preview_ip_range_blacklist: ['127.0.0.0/8','{{ansible_ssh_host}}/32']"
+  - name: Adding synapse system user
+    user:
+      name: synapse
+      shell: /bin/bash
+      home: /opt/synapse
+  - name: Installing Synapse SSL Key
+    copy: src=ansibleFiles/ssl.key dest=/opt/synapse/{{inventory_hostname}}.tls.key
+  - name: Installing Synapse SSL Certificate
+    copy: src=ansibleFiles/ssl.cert dest=/opt/synapse/{{inventory_hostname}}.tls.crt
+  - name: Installing lxml in Synapse
+    shell: source /opt/synapse/bin/activate && pip install lxml
+
+  - name: Chowing /opt/synapse to user synapse
+    command: chown -R synapse:synapse /opt/synapse
+  - name: Creating Synapse Server Service Directory
+    file: path=/service/Synapse state=directory
+  - name: Creating Synapse Server Service Log Directory
+    file: path=/service/Synapse/log state=directory
+  - name: Creating Synapse Server Service Log Main Directory
+    file: path=/service/Synapse/log/main state=directory
+  - name: Copying Synapse Server Log run script
+    copy: src=ansibleFiles/synapse_log.run dest=/service/Synapse/log/run mode=0755
+  - name: Copying Synapse Server Run Script
+    copy: src=ansibleFiles/synapse.run dest=/service/Synapse/run mode=0755
+
+#  - name: Downloading Riot Server
+#    get_url:
+#        url: https://github.com/vector-im/riot-web/releases/download/v0.12.3-rc.1/riot-v0.12.3-rc.1.tar.gz
+#        dest: /usr/src/riot-v0.12.3-rc.1.tar.gz
+#  - name: Unarchiving Riot Server
+#    command: chdir=/usr/src creates=/usr/src/riot-v0.12.3-rc.1 tar xvf riot-v0.12.3-rc.1.tar.gz
+#  - name: Copying Riot Server to /opt/riot
+#    command: creates=/opt/riot cp -prf /usr/src/riot-v0.12.3-rc.1 /opt/riot
+#  - name: Deplying Riot Configuration File
+#    template: src=ansibleFiles/config.json.j2 dest=/opt/riot/config.json

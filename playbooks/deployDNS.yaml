@@ -1,0 +1,54 @@
+---
+- hosts: dnsServers
+  gather_facts: true
+  accelerate: False
+  vars:
+    bind_zone_master_server_ip: "{{hostvars['dns1.node.pub'].ansible_ssh_host}}"
+    bind_zone_name: "{{domain}}"
+    bind_allow_query: [any]
+    bind_listen_ipv4: [any]
+    bind_zone_name_servers: [dns1,dns2]
+    bind_zone_mail_servers: 
+      - name: mail
+        preference: 10
+    bind_zone_hosts:
+      - name: dns1
+        ip: "{{hostvars['dns1.node.pub'].ansible_ssh_host}}"
+      - name: dns2
+        ip: "{{hostvars['dns2.node.pub'].ansible_ssh_host}}"
+      - name: chat
+        ip: "{{hostvars['chat.node.pub'].ansible_ssh_host}}"
+      - name: '@'
+        ip: "{{websiteAddress}}"
+        aliases:
+          - www
+  roles:
+    - ansible-role-bind
+  tasks:
+  - name: Nullifying iptables configuration
+    file: path=/etc/sysconfig/iptables state=absent
+  - name: Disabling iptables
+    service: name=iptables enabled=False state=stopped 
+  - name: Removing /var/named/slaves/node.pub on dns2
+    delegate_to: dns2.node.pub
+    file: path=/var/named/slaves/node.pub state=absent
+    run_once: True
+  - name: reloading bind on dns2
+    delegate_to: dns2.node.pub
+    service: name=named state=restarted
+    run_once: True
+
+  - name: Disabling IPTables
+    service: name=iptables state=stopped enabled=False
+  - name: downloading csf
+    command: creates=/usr/src/csf.tgz chdir=/usr/src wget https://download.configserver.com/csf.tgz
+  - name: untarring csf.tgz
+    command:  chdir=/usr/src creates=/usr/src/csf tar zxf csf.tgz
+  - name: deploying csf
+    command: chdir=/usr/src/csf creates=/etc/csf sh install.sh
+  - name: deploying csf config file
+    copy: src=ansibleFiles/csf.conf dest=/etc/csf/csf.conf
+  - command: csf -a {{item}}
+    with_items: [66.35.95.190]
+  - name: reloading csf
+    command: csf -r

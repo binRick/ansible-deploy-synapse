@@ -1,0 +1,3 @@
+#!/bin/sh
+mkdir ./main 2>/dev/null
+exec setuidgid root multilog t s5485760 n20 ./main

@@ -1,0 +1,3 @@
+#!/bin/sh
+cd /opt/synapse
+exec setuidgid synapse /opt/synapse/bin/python2.7 -B -m synapse.app.homeserver -c homeserver.yaml 2>&1

@@ -1,0 +1,9 @@
+#!/bin/sh
+virtualenv -p python2.7 /opt/synapse
+source /opt/synapse/bin/activate
+cd /opt/synapse
+python -m synapse.app.homeserver \
+    --server-name {{inventory_hostname}} \
+    --config-path homeserver.yaml \
+    --generate-config \
+    --report-stats=no
